@@ -1,17 +1,17 @@
 name: Build Magisk Module
 on: 
-  workflow_dispatch: # 核心：允许在 Actions 页面手动点击运行
-  # push: # 已注释掉：提交代码不再自动触发构建
+  workflow_dispatch: # 开启手动运行模式
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
         with:
           submodules: 'recursive'
 
-      - name: set up JDK 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
@@ -23,41 +23,44 @@ jobs:
       - name: Build with Gradle
         run: |
           chmod +x gradlew
-          # 仅编译 Release 版本
+          # 执行 Release 编译
           ./gradlew :module:assembleRelease
 
       - name: Package Magisk Module
         run: |
+          # 创建打包临时目录
           mkdir -p out/zip/zygisk
           
-          # 1. 复制你的 Magisk 模板文件
+          # 1. 复制 Magisk 模块的基础配置文件 (module.prop, service.sh 等)
           if [ -d "template/magisk_module" ]; then
             cp -r template/magisk_module/* out/zip/
+            echo "Magisk template files copied."
           else
             echo "Error: template/magisk_module directory not found!"
             exit 1
           fi
           
-          # 2. 寻找编译生成的 so 文件并放入对应目录
+          # 2. 寻找编译生成的 libil2cppdumper.so 并放入 zygisk 文件夹
           # 路径适配：module/build/intermediates/cmake/release/obj/...
           find module/build/intermediates/cmake/release -name "libil2cppdumper.so" | while read -r so_path; do
             if [[ "$so_path" == *"arm64-v8a"* ]]; then
               cp "$so_path" out/zip/zygisk/arm64-v8a.so
-              echo "Copied arm64-v8a.so"
+              echo "Matched and copied arm64-v8a.so"
             elif [[ "$so_path" == *"armeabi-v7a"* ]]; then
               cp "$so_path" out/zip/zygisk/armeabi-v7a.so
-              echo "Copied armeabi-v7a.so"
+              echo "Matched and copied armeabi-v7a.so"
             fi
           done
 
-          # 3. 检查关键文件是否到位，防止生成空包
+          # 3. 容错检查：确保核心 64 位库已成功放入
           if [ ! -f "out/zip/zygisk/arm64-v8a.so" ]; then
-            echo "Error: arm64-v8a.so was not found in build outputs!"
+            echo "Error: Build output arm64-v8a.so missing! Check Gradle task."
             exit 1
           fi
 
-          # 4. 打包最终模块
+          # 4. 压缩为标准 Magisk 安装包
           cd out/zip && zip -r ../Zygisk-Il2CppDumper-V2.zip .
+          echo "Zip package created."
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
