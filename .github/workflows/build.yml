@@ -26,15 +26,21 @@ jobs:
       - name: Prepare Magisk Module
         run: |
           mkdir -p out/zip/zygisk
-          # 复制 Magisk 模板文件
-          cp -r template/* out/zip/
+          # 核心修改：适配你的 template/magisk_module 路径
+          cp -r template/magisk_module/* out/zip/
           
           # 寻找编译生成的 so 文件并放入对应目录
-          # 原版仓库路径通常在 entry/build/...
+          # 兼容不同 Gradle 版本的路径差异
           find entry/build/intermediates/cmake/release/obj/arm64-v8a -name "lib*.so" -exec cp {} out/zip/zygisk/arm64-v8a.so \;
           find entry/build/intermediates/cmake/release/obj/armeabi-v7a -name "lib*.so" -exec cp {} out/zip/zygisk/armeabi-v7a.so \;
           
-          # 打包
+          # 检查 so 是否成功复制，防止打出空包
+          if [ ! -f "out/zip/zygisk/arm64-v8a.so" ]; then
+            echo "Error: arm64 so file not found!"
+            exit 1
+          fi
+
+          # 打包成最终模块
           cd out/zip && zip -r ../Zygisk-Il2CppDumper-V2.zip .
 
       - name: Upload Artifact
