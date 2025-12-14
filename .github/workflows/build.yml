@@ -1,5 +1,7 @@
-name: Build Pro Dumper
-on: [push, workflow_dispatch]
+name: Build Magisk Module
+on: 
+  workflow_dispatch: # 核心：允许在 Actions 页面手动点击运行
+  # push: # 已注释掉：提交代码不再自动触发构建
 
 jobs:
   build:
@@ -21,26 +23,40 @@ jobs:
       - name: Build with Gradle
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease
+          # 仅编译 Release 版本
+          ./gradlew :module:assembleRelease
 
-      - name: Prepare Magisk Module
+      - name: Package Magisk Module
         run: |
           mkdir -p out/zip/zygisk
-          # 核心修改：适配你的 template/magisk_module 路径
-          cp -r template/magisk_module/* out/zip/
           
-          # 寻找编译生成的 so 文件并放入对应目录
-          # 兼容不同 Gradle 版本的路径差异
-          find entry/build/intermediates/cmake/release/obj/arm64-v8a -name "lib*.so" -exec cp {} out/zip/zygisk/arm64-v8a.so \;
-          find entry/build/intermediates/cmake/release/obj/armeabi-v7a -name "lib*.so" -exec cp {} out/zip/zygisk/armeabi-v7a.so \;
+          # 1. 复制你的 Magisk 模板文件
+          if [ -d "template/magisk_module" ]; then
+            cp -r template/magisk_module/* out/zip/
+          else
+            echo "Error: template/magisk_module directory not found!"
+            exit 1
+          fi
           
-          # 检查 so 是否成功复制，防止打出空包
+          # 2. 寻找编译生成的 so 文件并放入对应目录
+          # 路径适配：module/build/intermediates/cmake/release/obj/...
+          find module/build/intermediates/cmake/release -name "libil2cppdumper.so" | while read -r so_path; do
+            if [[ "$so_path" == *"arm64-v8a"* ]]; then
+              cp "$so_path" out/zip/zygisk/arm64-v8a.so
+              echo "Copied arm64-v8a.so"
+            elif [[ "$so_path" == *"armeabi-v7a"* ]]; then
+              cp "$so_path" out/zip/zygisk/armeabi-v7a.so
+              echo "Copied armeabi-v7a.so"
+            fi
+          done
+
+          # 3. 检查关键文件是否到位，防止生成空包
           if [ ! -f "out/zip/zygisk/arm64-v8a.so" ]; then
-            echo "Error: arm64 so file not found!"
+            echo "Error: arm64-v8a.so was not found in build outputs!"
             exit 1
           fi
 
-          # 打包成最终模块
+          # 4. 打包最终模块
           cd out/zip && zip -r ../Zygisk-Il2CppDumper-V2.zip .
 
       - name: Upload Artifact
