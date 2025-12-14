@@ -1,6 +1,6 @@
 name: Build Magisk Module
 on: 
-  workflow_dispatch: # 开启手动运行模式
+  workflow_dispatch: # 手动触发构建
 
 jobs:
   build:
@@ -23,47 +23,15 @@ jobs:
       - name: Build with Gradle
         run: |
           chmod +x gradlew
-          # 执行 Release 编译
+          # 核心编译指令
+          # 执行该任务后，Gradle 会自动处理 C++ 编译和 Magisk 模块打包
           ./gradlew :module:assembleRelease
-
-      - name: Package Magisk Module
-        run: |
-          # 创建打包临时目录
-          mkdir -p out/zip/zygisk
-          
-          # 1. 复制 Magisk 模块的基础配置文件 (module.prop, service.sh 等)
-          if [ -d "template/magisk_module" ]; then
-            cp -r template/magisk_module/* out/zip/
-            echo "Magisk template files copied."
-          else
-            echo "Error: template/magisk_module directory not found!"
-            exit 1
-          fi
-          
-          # 2. 寻找编译生成的 libil2cppdumper.so 并放入 zygisk 文件夹
-          # 路径适配：module/build/intermediates/cmake/release/obj/...
-          find module/build/intermediates/cmake/release -name "libil2cppdumper.so" | while read -r so_path; do
-            if [[ "$so_path" == *"arm64-v8a"* ]]; then
-              cp "$so_path" out/zip/zygisk/arm64-v8a.so
-              echo "Matched and copied arm64-v8a.so"
-            elif [[ "$so_path" == *"armeabi-v7a"* ]]; then
-              cp "$so_path" out/zip/zygisk/armeabi-v7a.so
-              echo "Matched and copied armeabi-v7a.so"
-            fi
-          done
-
-          # 3. 容错检查：确保核心 64 位库已成功放入
-          if [ ! -f "out/zip/zygisk/arm64-v8a.so" ]; then
-            echo "Error: Build output arm64-v8a.so missing! Check Gradle task."
-            exit 1
-          fi
-
-          # 4. 压缩为标准 Magisk 安装包
-          cd out/zip && zip -r ../Zygisk-Il2CppDumper-V2.zip .
-          echo "Zip package created."
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Zygisk-Il2CppDumper-V2
-          path: out/Zygisk-Il2CppDumper-V2.zip
+          # 捕获 Gradle 自动生成的 zip 文件
+          # 按照原版模板逻辑，生成的包通常位于根目录的 out 文件夹中
+          path: out/*.zip
+          # 如果下载到的 Artifacts 是空的，请尝试将路径改为：**/build/outputs/**/*.zip
